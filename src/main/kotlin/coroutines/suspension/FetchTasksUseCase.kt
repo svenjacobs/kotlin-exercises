@@ -15,10 +15,23 @@ class FetchTasksUseCase(
     private val callbackUseCase: FetchTasksCallbackUseCase
 ) {
     @Throws(ApiException::class)
-    suspend fun fetchTasks(): List<Task> =
-        TODO()
-    suspend fun fetchTasksResult(): Result<List<Task>> =
-        TODO()
+    suspend fun fetchTasks(): List<Task> = suspendCancellableCoroutine { cont ->
+        val cancellable = callbackUseCase.fetchTasks(
+            onSuccess = { tasks -> cont.resume(tasks) },
+            onError = { error -> cont.resumeWithException(error)},
+        )
+
+        cont.invokeOnCancellation { cancellable.cancel() }
+    }
+
+    suspend fun fetchTasksResult(): Result<List<Task>> = suspendCancellableCoroutine { cont ->
+        val cancellable = callbackUseCase.fetchTasks(
+            onSuccess = { tasks -> cont.resume(Result.success(tasks)) },
+            onError = { error -> cont.resume(Result.failure(error))  }
+        )
+
+        cont.invokeOnCancellation { cancellable.cancel() }
+    }
 }
 
 interface FetchTasksCallbackUseCase {
