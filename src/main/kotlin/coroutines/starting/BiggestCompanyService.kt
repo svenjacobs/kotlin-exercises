@@ -1,7 +1,10 @@
 package coroutines.starting.biggestcompanyservice
 
+import coroutines.debug.computeOne
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -15,10 +18,26 @@ class BiggestCompanyService(
     private val backgroundScope: CoroutineScope,
 ) {
     private val _companyWithHighestRevenue = MutableStateFlow<CompanyDetails?>(null)
-    val companyWithHighestRevenue = _companyWithHighestRevenue
+    val companyWithHighestRevenue: StateFlow<CompanyDetails?> = _companyWithHighestRevenue.asStateFlow()
 
     fun updateHighestRevenueCompany() {
-        // TODO
+        backgroundScope.launch {
+            val companies = companyRepository.getCompanyList()
+
+            val details = companies.map { company ->
+                async { companyRepository.getCompanyDetails(company.id) }
+            }.awaitAll()
+
+            val highestRevenue = details.fold(null) { acc: CompanyDetails?, details ->
+                if (acc == null || details.revenue > acc.revenue) {
+                    details
+                } else {
+                    acc
+                }
+            }
+
+            _companyWithHighestRevenue.value = highestRevenue
+        }
     }
 }
 
