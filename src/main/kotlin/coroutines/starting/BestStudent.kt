@@ -12,7 +12,19 @@ import kotlin.test.assertEquals
 class BestStudentUseCase(
     private val repo: StudentsRepository
 ) {
-    suspend fun getBestStudent(semester: String): Student = TODO()
+    suspend fun getBestStudent(semester: String): Student = coroutineScope {
+        val ids = repo.getStudentIds(semester)
+
+        if (ids.isEmpty()) {
+            throw IllegalStateException("No students in semester")
+        }
+
+        val students = ids
+            .map { id -> async { repo.getStudent(id) } }
+            .awaitAll()
+
+        students.maxBy { student -> student.result }
+    }
 }
 
 data class Student(val id: Int, val result: Double, val semester: String)
