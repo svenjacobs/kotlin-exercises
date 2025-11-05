@@ -13,10 +13,8 @@ class EvaluationService(
     suspend fun evaluate(orderDetails: OrderDetails): Result<EvaluationResponse> =
         evaluateWithPrimaryEngine(orderDetails)
             .also {
-                coroutineScope {
-                    launch {
-                        evaluateWithSecondaryEngines(orderDetails)
-                    }
+                backgroundScope.launch {
+                    evaluateWithSecondaryEngines(orderDetails)
                 }
             }
 }
