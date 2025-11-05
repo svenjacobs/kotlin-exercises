@@ -19,11 +19,44 @@ class LecturesViewModel(
     val uiState: StateFlow<LecturesUiState> = _uiState.asStateFlow()
 
     init {
-        TODO()
+        loadLectures()
     }
 
     fun onToggleFavorite(lectureId: String) {
-        TODO()
+        val isFavorite = uiState.value.lectures.find { it.id == lectureId }?.isFavorite ?: return
+
+        viewModelScope.launch {
+            lecturesRepository.setUserFavorite(lectureId, !isFavorite)
+            loadLectures()
+        }
+    }
+
+    private fun loadLectures() {
+        _uiState.update { uiState -> uiState.copy(loading = true) }
+
+        viewModelScope.launch {
+            val presentationsDeferred = async { lecturesRepository.getPresentations() }
+            val favoritesDeferred = async { lecturesRepository.getUserFavorites() }
+
+            val presentations = presentationsDeferred.await()
+            val favorites = favoritesDeferred.await()
+
+            val uiPresentations = presentations.map { presentation ->
+                PresentationUi(
+                    id = presentation.id,
+                    title = presentation.title,
+                    speaker = presentation.speaker,
+                    isFavorite = favorites.contains(presentation.id),
+                )
+            }
+
+            _uiState.update { uiState ->
+                uiState.copy(
+                    loading = false,
+                    lectures = uiPresentations,
+                )
+            }
+        }
     }
 }
 
@@ -117,7 +150,10 @@ class PresentationsViewModelTest {
 
         assertEquals(true, pres1?.isFavorite)
         assertEquals(false, pres2?.isFavorite)
-        assertEquals(false, viewModel.uiState.value.loading) // Loading should be false after loading completes
+        assertEquals(
+            false,
+            viewModel.uiState.value.loading
+        ) // Loading should be false after loading completes
     }
 
     @Test
