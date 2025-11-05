@@ -13,7 +13,19 @@ class NotificationSenderTask(
 
     @Cron("0 0/1 * * * ?")
     fun sendNotifications() {
-        TODO()
+        backgroundScope.launch {
+            val notifications = notificationRepository.getPendingNotifications()
+
+            val results = notifications.map { notification ->
+                async { notification.id to notificationSender.send(notification) }
+            }.awaitAll()
+
+            val successNotificationIds = results
+                .filter { (_, success) -> success }
+                .map { (id) -> id }
+
+            notificationRepository.markAsSent(successNotificationIds)
+        }
     }
 }
 
