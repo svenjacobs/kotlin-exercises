@@ -15,11 +15,14 @@ class SignatureSender(
     private val logger: Logger,
     private val ioDispatcher: CoroutineDispatcher,
 ) {
-    suspend fun sendSignature(file: File) {
+    suspend fun sendSignature(file: File) = withContext(ioDispatcher) {
         try {
             val content = fileReader.readFile(file) // blocking
+            ensureActive()
             val signature = signatureCalculator.calculateSignature(content) // CPU-intensive function
             signatureApi.sendSignature(signature) // suspending
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logger.logError("Error while sending signature", e)
         } finally {
