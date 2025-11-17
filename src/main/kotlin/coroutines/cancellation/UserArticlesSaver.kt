@@ -15,22 +15,26 @@ class UserArticlesSaver(
     private val storage: Storage,
     private val logger: Logger,
 ) {
-    suspend fun storeUserArticles(userId: Int) {
+    suspend fun storeUserArticles(userId: Int) = coroutineScope {
         val token = tokenProvider.getToken() // suspending
-        val userDetails = client.fetchUserDetails(token, userId) // suspending
-        val userArticles = client.fetchUserArticles(token, userId) // suspending
+        val userDetails = async { client.fetchUserDetails(token, userId) } // suspending
+        val userArticles = async { client.fetchUserArticles(token, userId) } // suspending
 
-        for (article in userArticles.articles) {
-            saveArticle(article, userDetails)
-        }
+        userArticles.await().articles.map { article ->
+            launch { saveArticle(article, userDetails.await()) }
+        }.joinAll()
+
         client.notifyAllArticlesSaved(userId)
     }
 
-    private fun saveArticle(article: Article, userDetails: UserDetails) {
+    private suspend fun saveArticle(article: Article, userDetails: UserDetails): Unit = coroutineScope {
         try {
-            val articleContent = runBlocking { client.fetchArticle(article.key) } // suspending
+            val articleContent = client.fetchArticle(article.key) // suspending
             val articleFile = storage.saveArticleToFile(articleContent) // blocking
+            yield()
             storage.saveArticleMetadata(articleFile, articleContent, userDetails) // blocking
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logger.log("Exception while saving article $article", e)
             saveArticle(article, userDetails) // recursive suspending
