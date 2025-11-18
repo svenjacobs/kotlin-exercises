@@ -2,6 +2,7 @@ package coroutines.scope.notificationsender
 
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.StandardTestDispatcher
+import org.checkerframework.checker.units.qual.mol
 import org.junit.Test
 import kotlin.test.assertEquals
 
@@ -10,14 +11,20 @@ class NotificationSender(
     private val exceptionCollector: ExceptionCollector,
     dispatcher: CoroutineDispatcher,
 ) {
-    val scope: CoroutineScope = TODO()
+    val exceptionHandler = CoroutineExceptionHandler { _, e ->
+        exceptionCollector.collectException(e)
+    }
+
+    val scope: CoroutineScope = CoroutineScope(SupervisorJob() + dispatcher + exceptionHandler)
 
     fun sendNotifications(notifications: List<Notification>) {
-        // TODO
+        notifications.forEach { notification ->
+            scope.launch { client.send(notification) }
+        }
     }
 
     fun cancel() {
-        // TODO
+        scope.coroutineContext.cancelChildren()
     }
 }
 
@@ -38,7 +45,8 @@ class NotificationSenderTest {
         val fakeNotificationsClient = FakeNotificationClient(delayTime = 200)
         val fakeExceptionCollector = FakeExceptionCollector()
         val testDispatcher = StandardTestDispatcher()
-        val sender = NotificationSender(fakeNotificationsClient, fakeExceptionCollector, testDispatcher)
+        val sender =
+            NotificationSender(fakeNotificationsClient, fakeExceptionCollector, testDispatcher)
         val notifications = List(20) { Notification("ID$it") }
 
         // when
@@ -47,7 +55,11 @@ class NotificationSenderTest {
 
         // then
         assertEquals(notifications, fakeNotificationsClient.sent)
-        assertEquals(200, testDispatcher.scheduler.currentTime, "Notifications should be sent concurrently")
+        assertEquals(
+            200,
+            testDispatcher.scheduler.currentTime,
+            "Notifications should be sent concurrently"
+        )
     }
 
     @Test
@@ -55,7 +67,8 @@ class NotificationSenderTest {
         val fakeNotificationsClient = FakeNotificationClient(delayTime = 1000)
         val fakeExceptionCollector = FakeExceptionCollector()
         val testDispatcher = StandardTestDispatcher()
-        val sender = NotificationSender(fakeNotificationsClient, fakeExceptionCollector, testDispatcher)
+        val sender =
+            NotificationSender(fakeNotificationsClient, fakeExceptionCollector, testDispatcher)
         val notifications = List(20) { Notification("ID$it") }
 
         // when
@@ -75,7 +88,8 @@ class NotificationSenderTest {
         val fakeNotificationsClient = FakeNotificationClient(delayTime = 100, failEvery = 10)
         val fakeExceptionCollector = FakeExceptionCollector()
         val testDispatcher = StandardTestDispatcher()
-        val sender = NotificationSender(fakeNotificationsClient, fakeExceptionCollector, testDispatcher)
+        val sender =
+            NotificationSender(fakeNotificationsClient, fakeExceptionCollector, testDispatcher)
         val notifications = List(100) { Notification("ID$it") }
 
         // when
@@ -91,7 +105,8 @@ class NotificationSenderTest {
         val fakeNotificationsClient = FakeNotificationClient(delayTime = 100, failEvery = 10)
         val fakeExceptionCollector = FakeExceptionCollector()
         val testDispatcher = StandardTestDispatcher()
-        val sender = NotificationSender(fakeNotificationsClient, fakeExceptionCollector, testDispatcher)
+        val sender =
+            NotificationSender(fakeNotificationsClient, fakeExceptionCollector, testDispatcher)
         val notifications = List(100) { Notification("ID$it") }
 
         // when
@@ -105,7 +120,7 @@ class NotificationSenderTest {
 
 class FakeNotificationClient(
     val delayTime: Long = 0L,
-    val failEvery: Int = Int.MAX_VALUE
+    val failEvery: Int = Int.MAX_VALUE,
 ) : NotificationClient {
     var sent = emptyList<Notification>()
     var counter = 0
@@ -122,7 +137,8 @@ class FakeNotificationClient(
     }
 }
 
-class FakeFailure(val notification: Notification) : Throwable("Planned fail for notification ${notification.id}")
+class FakeFailure(val notification: Notification) :
+    Throwable("Planned fail for notification ${notification.id}")
 
 class FakeExceptionCollector : ExceptionCollector {
     var collected = emptyList<Throwable>()
