@@ -16,7 +16,16 @@ abstract class BaseViewModel : ViewModel() {
     private val _exceptions = Channel<Throwable>(Channel.UNLIMITED)
     val exceptions: Flow<Throwable> = _exceptions.receiveAsFlow()
 
-    val scope: CoroutineScope = TODO()
+    val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        _exceptions.trySendBlocking(throwable)
+    }
+
+    val scope: CoroutineScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob() + exceptionHandler)
+
+    override fun onCleared() {
+        scope.coroutineContext.cancelChildren()
+        super.onCleared()
+    }
 }
 
 class MainViewModel(
