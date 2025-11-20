@@ -24,10 +24,42 @@ class UserRefresher(
     private val refreshData: suspend (Int) -> Unit,
 ) {
     private var refreshJob: Job? = null
+    private val userIds = Channel<Int>(capacity = Channel.UNLIMITED)
+    private val mutex = Mutex()
+
+    init {
+        scope.launch {
+            for (userId in userIds) {
+                refreshData(userId)
+            }
+        }
+    }
 
     suspend fun refresh(userId: Int) {
+        userIds.send(userId)
+    }
+
+    suspend fun refreshWithMutex(userId: Int) {
         refreshJob?.join()
         refreshJob = scope.launch {
+            mutex.withLock {
+                refreshData(userId)
+            }
+        }
+    }
+
+    /**
+     * I believe this would also be a valid and concise solution as the mutex ensures that only
+     * one coroutine can run this suspending function. However, this function fails with the tests
+     * because the condition
+     *
+     * assert(currentTime <= 1000)
+     *
+     * is not true anymore. currenTime is already at 1.000.000 after refreshWithMutex2() has run
+     * 1000 times.
+     */
+    suspend fun refreshWithMutex2(userId: Int) {
+        mutex.withLock {
             refreshData(userId)
         }
     }
@@ -77,33 +109,36 @@ class UserRefresherTest {
     }
 
     @Test
-    fun `should not start more than one refresh job (on real time)`(): Unit = runBlocking(Dispatchers.Default) {
-        val finished = AtomicInteger(0)
-        val backgroundScope = CoroutineScope(Job())
-        val userRefresher = UserRefresher(
-            scope = backgroundScope,
-            refreshData = { userId ->
-                delay(10)
-                finished.incrementAndGet()
-            }
-        )
-  
-        val sendTime = measureTime {
-            coroutineScope {
-                repeat(100) {
-                    launch { userRefresher.refresh(it) }
+    fun `should not start more than one refresh job (on real time)`(): Unit =
+        runBlocking(Dispatchers.Default) {
+            val finished = AtomicInteger(0)
+            val backgroundScope = CoroutineScope(Job())
+            val userRefresher = UserRefresher(
+                scope = backgroundScope,
+                refreshData = { userId ->
+                    delay(10)
+                    finished.incrementAndGet()
+                }
+            )
+
+            val sendTime = measureTime {
+                coroutineScope {
+                    repeat(100) {
+                        launch { userRefresher.refresh(it) }
+                    }
                 }
             }
+            val executionTime = measureTime {
+                await { finished.get() >= 100 }
+            }
+            assertEquals(0, sendTime.inWholeSeconds)
+            assert(1 >= executionTime.inWholeSeconds)
+            backgroundScope.cancel()
         }
-        val executionTime = measureTime {
-            await { finished.get() >= 100 }
-        }
-        assertEquals(0, sendTime.inWholeSeconds)
-        assert(1 >= executionTime.inWholeSeconds)
-        backgroundScope.cancel()
-    }
 }
 
 suspend fun await(condition: () -> Boolean) {
-    while (!condition()) { delay(1) }
+    while (!condition()) {
+        delay(1)
+    }
 }
