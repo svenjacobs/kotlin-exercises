@@ -23,7 +23,13 @@ class NewsViewModel(
     val errors = _errors.receiveAsFlow()
 
     init {
-        // TODO
+        newsRepository.fetchNews()
+            .onStart { _progressVisible.value = true }
+            .onEach { news -> _newsToShow.update { it + news } }
+            .onCompletion { _progressVisible.value = false }
+            .retry(Long.MAX_VALUE) { e -> e is ApiException }
+            .catch { e -> _errors.send(e) }
+            .launchIn(viewModelScope)
     }
 }
 
