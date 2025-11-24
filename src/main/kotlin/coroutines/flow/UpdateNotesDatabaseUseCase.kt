@@ -2,6 +2,7 @@ package coroutines.flow.updatenotesdatabaseusecase
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
@@ -13,7 +14,17 @@ class UpdateNotesDatabaseUseCase(
     private val notesRemoteRepository: NotesRemoteRepository,
     private val notesLocalRepository: NotesLocalRepository,
 ) {
-    fun updateNotes(): Flow<Progress> = TODO()
+    fun updateNotes(): Flow<Progress> = channelFlow {
+        val ids = notesRemoteRepository.fetchNotesIds()
+
+        send(Progress(0, ids.size))
+
+        ids.forEachIndexed { index, id ->
+            val note = notesRemoteRepository.getNote(id)
+            notesLocalRepository.saveNote(note)
+            send(Progress(index + 1, ids.size))
+        }
+    }
 }
 
 interface NotesRemoteRepository {
