@@ -20,7 +20,14 @@ class ProductService(
 ) {
     private val activeObservers = AtomicInteger(0)
 
-    fun observeProducts(categories: Set<String>): Flow<Product> = TODO()
+    fun observeProducts(categories: Set<String>): Flow<Product> =
+        productRepository.observeProductUpdates()
+            .onStart { activeObservers.incrementAndGet() }
+            .flatMapMerge(concurrency = Int.MAX_VALUE) { flow { emit(productRepository.fetchProduct(it)) } }
+            .filter { it.category in categories }
+            .onCompletion { activeObservers.decrementAndGet() }
+            .distinctUntilChangedBy { it.id }
+
 
     fun activeObserversCount(): Int = activeObservers.get()
 }
@@ -101,10 +108,14 @@ class ProductServiceTest {
         val productService = ProductService(fakeProductRepository, backgroundScope)
         assertEquals(0, productService.activeObserversCount())
 
-        val job1 = backgroundScope.launch { productService.observeProducts(setOf(product1.category)).collect() }
+        val job1 = backgroundScope.launch {
+            productService.observeProducts(setOf(product1.category)).collect()
+        }
         runCurrent()
         assertEquals(1, productService.activeObserversCount())
-        val job2 = backgroundScope.launch { productService.observeProducts(setOf(product1.category)).collect() }
+        val job2 = backgroundScope.launch {
+            productService.observeProducts(setOf(product1.category)).collect()
+        }
         runCurrent()
         assertEquals(2, productService.activeObserversCount())
         job2.cancel()
@@ -170,7 +181,8 @@ class ProductServiceTest {
                 price = it.toDouble(),
             )
         }
-        val fakeProductRepository = FakeProductRepository(fetchProductsDelay = 1000, products = products)
+        val fakeProductRepository =
+            FakeProductRepository(fetchProductsDelay = 1000, products = products)
         val productService = ProductService(fakeProductRepository, backgroundScope)
         val observedProducts = Channel<Product>(Channel.UNLIMITED)
         productService.observeProducts(setOf("ALL"))
@@ -199,7 +211,7 @@ class FakeProductRepository(
         product1,
         product2,
         product3
-    )
+    ),
 ) : ProductRepository {
     private val updates = MutableSharedFlow<String>()
     var observers = 0
