@@ -15,9 +15,21 @@ class PriceService(
     priceRepository: PriceRepository,
     backgroundScope: CoroutineScope,
 ) {
-    fun observePrices(): Flow<Map<ProductId, PriceConfig>> =TODO()
+    private val prices = ConcurrentHashMap<ProductId, PriceConfig>()
 
-    fun currentPrices(): Map<ProductId, PriceConfig> = TODO()
+    val priceUpdates = priceRepository.observeUpdates()
+        .onEach { prices.putAll(it) }
+        .shareIn(scope = backgroundScope, started = SharingStarted.Eagerly)
+        .onSubscription {
+            val prices = currentPrices()
+            if (prices.isNotEmpty()) {
+                emit(prices)
+            }
+        }
+
+    fun observePrices(): Flow<Map<ProductId, PriceConfig>> = priceUpdates
+
+    fun currentPrices(): Map<ProductId, PriceConfig> = prices.toMap()
 }
 
 interface PriceRepository {
