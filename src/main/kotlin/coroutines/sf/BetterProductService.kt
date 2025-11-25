@@ -20,13 +20,20 @@ class ProductService(
 ) {
     private val activeObservers = AtomicInteger(0)
 
-    fun observeProducts(categories: Set<String>): Flow<Product> =
+    private val products =
         productRepository
             .observeProductUpdates()
             .distinctUntilChanged()
             .flatMapMerge(concurrency = Int.MAX_VALUE) {
                 flow { emit(productRepository.fetchProduct(it)) }
             }
+            .shareIn(
+                scope = backgroundScope,
+                started = SharingStarted.WhileSubscribed(),
+            )
+
+    fun observeProducts(categories: Set<String>): Flow<Product> =
+        products
             .filter { it.category in categories }
             .onStart { activeObservers.incrementAndGet() }
             .onCompletion { activeObservers.decrementAndGet() }
