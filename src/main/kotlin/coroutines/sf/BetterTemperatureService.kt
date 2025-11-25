@@ -17,11 +17,15 @@ class TemperatureService(
     private val lastKnownTemperature =
         ConcurrentHashMap<String, Fahrenheit>()
 
+    private val temperatures = temperatureDataSource.observeTemperatureUpdates()
+        .map { it.city to celsiusToFahrenheit(it.temperature) }
+        .onEach { (city, fahrenheit) -> lastKnownTemperature[city] = fahrenheit }
+        .shareIn(scope = backgroundScope, started = SharingStarted.Eagerly)
+
     fun observeTemperature(city: String): Flow<Fahrenheit> =
-        temperatureDataSource.observeTemperatureUpdates()
-            .filter { it.city == city }
-            .map { celsiusToFahrenheit(it.temperature) }
-            .onEach { lastKnownTemperature[city] = it }
+        temperatures
+            .filter { (cty) -> cty == city }
+            .map { (_, fahrenheit) -> fahrenheit }
             .onStart { lastKnownTemperature[city]?.let { emit(it) } }
 
     fun getLastKnown(city: String): Fahrenheit? =
@@ -47,7 +51,7 @@ data class Fahrenheit(
     val temperature: Double,
 )
 
-      class TemperatureServiceTest {
+class TemperatureServiceTest {
 
     @Test
     fun `should emit temperature updates in Fahrenheit`() = runTest {
@@ -146,9 +150,10 @@ data class Fahrenheit(
         val temperatureUpdatesSource = MutableSharedFlow<TemperatureData>()
         var observersCounter = 0
         val testDataSource = object : TemperatureDataSource {
-            override fun observeTemperatureUpdates(): Flow<TemperatureData> = temperatureUpdatesSource
-                .onStart { observersCounter++ }
-                .onCompletion { observersCounter++ }
+            override fun observeTemperatureUpdates(): Flow<TemperatureData> =
+                temperatureUpdatesSource
+                    .onStart { observersCounter++ }
+                    .onCompletion { observersCounter++ }
         }
         val service = TemperatureService(testDataSource, backgroundScope)
 
@@ -182,9 +187,10 @@ data class Fahrenheit(
         val temperatureUpdatesSource = MutableSharedFlow<TemperatureData>()
         var observersCounter = 0
         val testDataSource = object : TemperatureDataSource {
-            override fun observeTemperatureUpdates(): Flow<TemperatureData> = temperatureUpdatesSource
-                .onStart { observersCounter++ }
-                .onCompletion { observersCounter++ }
+            override fun observeTemperatureUpdates(): Flow<TemperatureData> =
+                temperatureUpdatesSource
+                    .onStart { observersCounter++ }
+                    .onCompletion { observersCounter++ }
         }
         val service = TemperatureService(testDataSource, backgroundScope)
         delay(1)
