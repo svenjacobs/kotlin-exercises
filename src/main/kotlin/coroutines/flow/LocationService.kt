@@ -12,9 +12,16 @@ class LocationService(
     locationRepository: LocationRepository,
     backgroundScope: CoroutineScope,
 ) {
-    fun observeLocation(): Flow<Location> = TODO()
+    private val locationUpdates = locationRepository.observeLocation()
+        .stateIn(
+            scope = backgroundScope,
+            started = SharingStarted.Eagerly,
+            initialValue = null,
+        )
 
-    fun currentLocation(): Location? = TODO()
+    fun observeLocation(): Flow<Location> = locationUpdates.filterNotNull()
+
+    fun currentLocation(): Location? = locationUpdates.value
 }
 
 interface LocationRepository {
