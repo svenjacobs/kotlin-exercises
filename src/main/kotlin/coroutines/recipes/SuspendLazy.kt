@@ -9,11 +9,31 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.coroutines.CoroutineContext
 import org.junit.Test
+import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.atomics.update
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-fun <T> suspendLazy(initializer: suspend () -> T):SuspendLazy<T> =
-    TODO()
+fun <T> suspendLazy(initializer: suspend () -> T): SuspendLazy<T> =
+    object : SuspendLazy<T> {
+        private var value: T? = null
+        private val mutex = Mutex()
+
+        override val isInitialized: Boolean
+            get() = value != null
+
+        override fun valueOrNull(): T? = value
+
+        override suspend fun invoke(): T = mutex.withLock {
+            val curr = value
+            if (curr != null) return curr
+
+            val newValue = initializer()
+            value = newValue
+            newValue
+        }
+    }
 
 interface SuspendLazy<T> : suspend () -> T {
     val isInitialized: Boolean
@@ -42,18 +62,19 @@ class SuspendLazyTest {
     }
 
     @Test
-    fun should_not_calculate_value_multiple_times_when_multiple_coroutines_access_it() = runBlocking {
-        var calculatedTimes = 0
-        val lazyValue = suspendLazy { delay(1000); calculatedTimes++ }
-        coroutineScope {
-            repeat(10_000) {
-                launch {
-                    lazyValue()
+    fun should_not_calculate_value_multiple_times_when_multiple_coroutines_access_it() =
+        runBlocking {
+            var calculatedTimes = 0
+            val lazyValue = suspendLazy { delay(1000); calculatedTimes++ }
+            coroutineScope {
+                repeat(10_000) {
+                    launch {
+                        lazyValue()
+                    }
                 }
             }
+            assertEquals(1, calculatedTimes)
         }
-        assertEquals(1, calculatedTimes)
-    }
 
     @Test
     fun should_try_again_when_failure_during_value_initialization() = runTest {
