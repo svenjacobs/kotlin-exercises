@@ -12,8 +12,14 @@ import kotlin.test.assertEquals
 
 suspend fun <T, R> Iterable<T>.mapAsync(
     concurrency: Int,
-    transformation: suspend (T) -> R
-): List<R> = TODO()
+    transformation: suspend (T) -> R,
+): List<R> = coroutineScope {
+    val semaphore = Semaphore(concurrency)
+
+    map { value ->
+        async { semaphore.withPermit { transformation(value) } }
+    }.awaitAll()
+}
 
 class MapAsyncLimitedTest {
     private val anyConcurrency = 3
